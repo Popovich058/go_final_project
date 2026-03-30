@@ -14,7 +14,6 @@ import (
 // Возвращает ключ для подписи JWT
 // Берём пароль из TODO_PASSWORD
 // Используем запасной ключ, если пароль не задан.
-// Пробовал со строгой проверкой пароля, но приложение совсем не запускалось. Пока не разобрался как сделать.
 func getJWTKey() []byte {
 	password := os.Getenv("TODO_PASSWORD")
 	if password == "" {
@@ -36,13 +35,6 @@ type CustomClaims struct {
 
 // Создаём обработчик аутентификации
 func signinHandler(w http.ResponseWriter, r *http.Request) {
-	// Проверяем, что пароль установлен
-	expectedPassword := os.Getenv("TODO_PASSWORD")
-	if expectedPassword == "" {
-	json.NewEncoder(w).Encode(map[string]string{"error": "authentication is not configured"})
-		return
-	}
-
 	// Парсим JSON с паролем
 	var request struct {
 		Password string `json:"password"`
@@ -51,9 +43,11 @@ func signinHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	
+	password := os.Getenv("TODO_PASSWORD")
 
 	// Сравниваем пароли
-	if request.Password != expectedPassword {
+	if request.Password != password {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"error": "invalid password"})
 		return
@@ -62,7 +56,7 @@ func signinHandler(w http.ResponseWriter, r *http.Request) {
 	// Создаём JWT-токен
 	expirationTime := time.Now().Add(8 * time.Hour)
 	claims := CustomClaims{
-		PasswordHash: jwtHash(expectedPassword),
+		PasswordHash: jwtHash(password),
 		RegisteredClaims: jwt.RegisteredClaims{
 		ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
@@ -76,17 +70,18 @@ func signinHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Возвращаем токен
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+	if err := json.NewEncoder(w).Encode(map[string]string{"token": tokenString}); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 }
 
 // Создаём функцию для проверки аутентификации
 // Переименовал переменную jwt, потому что был конфликт с пакетом
 func auth(next http.HandlerFunc) http.HandlerFunc {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    // Смотрим наличие пароля
-    pass := os.Getenv("TODO_PASSWORD")
-    if len(pass) > 0 {
-        var jwtToken string
+    
+    var jwtToken string
 		
     // Получаем куку
     cookie, err := r.Cookie("token")
@@ -113,7 +108,7 @@ func auth(next http.HandlerFunc) http.HandlerFunc {
 
     // Сравниваем хэш пароля из токена с текущим паролем
     if valid {
-        currentHash := jwtHash(pass)
+        currentHash := jwtHash(os.Getenv("TODO_PASSWORD"))
         if claims.PasswordHash != currentHash {
             valid = false
     }
@@ -124,8 +119,6 @@ func auth(next http.HandlerFunc) http.HandlerFunc {
     http.Error(w, "Authentication required", http.StatusUnauthorized)
         return
     }
-    }
-
         next(w, r)
     })
 }

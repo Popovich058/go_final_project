@@ -83,57 +83,101 @@ func UpdateTask(task *Task) error {
 
 // Создаём функцию, которая получет задачи с фильтрацией по поиску и дате
 func Tasks(limit int, search string) ([]*Task, error) {
-	if db == nil {
-		return nil, fmt.Errorf("connection to the database is not established")
-	}
-
 	var rows *sql.Rows
 	var err error
 
+	// Посторался избавиться от else if и else. Но мне кажется получилась очень громоздкая функция.
 	// Проверяем формат даты DD.MM.YYYY
 	if isDateFormat(search) {
-		// Преобразуем DD.MM.YYYY в наш формат
-		dateStr := convertToDBDate(search)
-		query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE date = ? ORDER BY date ASC LIMIT ?`
-		rows, err = db.Query(query, dateStr, limit)
-	} else if search != "" {
-		// Выполняем поиск по подстроке в заголовке или комментарии
-		searchPattern := "%" + search + "%"
-		query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE title LIKE ? OR comment LIKE ? ORDER BY date ASC LIMIT ?`
-		rows, err = db.Query(query, searchPattern, searchPattern, limit)
-	} else {
-		// Показываем ближайшие задачи, если поиска не было
-		query := `SELECT id, date, title, comment, repeat FROM scheduler ORDER BY date ASC LIMIT ?`
-		rows, err = db.Query(query, limit)
-	}
+        dateStr := convertToDBDate(search)
+        query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE date = ? ORDER BY date ASC LIMIT ?`
+        rows, err = db.Query(query, dateStr, limit)
+        if err != nil {
+            return nil, fmt.Errorf("error in executing a database request: %w", err)
+        }
+        defer rows.Close()
 
-	if err != nil {
-		return nil, fmt.Errorf("error in executing a database request: %w", err)
-	}
-	defer rows.Close()
+        var tasks []*Task
+        for rows.Next() {
+            task := &Task{}
+            err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+            if err != nil {
+                return nil, fmt.Errorf("error scanning a database row: %w", err)
+            }
+            tasks = append(tasks, task)
+        }
 
-	var tasks []*Task
+        if err = rows.Err(); err != nil {
+            return nil, fmt.Errorf("error when iterating over query results: %w", err)
+        }
 
-	for rows.Next() {
-		task := &Task{}
-		err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
-		if err != nil {
-			return nil, fmt.Errorf("error scanning a database row: %w", err)
-		}
-		tasks = append(tasks, task)
-	}
+        // Если задач нет, то возвращаем пустой слайс вместо nil
+        if tasks == nil {
+            tasks = []*Task{}
+        }
 
-	// Проверяем возможные ошибки итерации
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error when iterating over query results: %w", err)
-	}
+        return tasks, nil
+    }
+	// Выполняем поиск по подстроке в заголовке или комментарии
+	if search != "" {
+        searchPattern := "%" + search + "%"
+        query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE title LIKE ? OR comment LIKE ? ORDER BY date ASC LIMIT ?`
+        rows, err = db.Query(query, searchPattern, searchPattern, limit)
+        if err != nil {
+            return nil, fmt.Errorf("error in executing a database request: %w", err)
+        }
+        defer rows.Close()
 
-	// Если задач нет, то возвращаем пустой слайс вместо nil
-	if tasks == nil {
-		tasks = []*Task{}
-	}
+        var tasks []*Task
+        for rows.Next() {
+            task := &Task{}
+            err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+            if err != nil {
+                return nil, fmt.Errorf("error scanning a database row: %w", err)
+            }
+            tasks = append(tasks, task)
+        }
 
-	return tasks, nil
+        if err = rows.Err(); err != nil {
+            return nil, fmt.Errorf("error when iterating over query results: %w", err)
+        }
+
+        // Если задач нет, то возвращаем пустой слайс вместо nil
+        if tasks == nil {
+            tasks = []*Task{}
+        }
+
+        return tasks, nil
+    }
+
+	// Показываем ближайшие задачи, если поиска не было
+	query := `SELECT id, date, title, comment, repeat FROM scheduler ORDER BY date ASC LIMIT ?`
+    rows, err = db.Query(query, limit)
+    if err != nil {
+        return nil, fmt.Errorf("error in executing a database request: %w", err)
+    }
+    defer rows.Close()
+
+    var tasks []*Task
+    for rows.Next() {
+        task := &Task{}
+        err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+        if err != nil {
+            return nil, fmt.Errorf("error scanning a database row: %w", err)
+        }
+        tasks = append(tasks, task)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, fmt.Errorf("error when iterating over query results: %w", err)
+    }
+
+    // Если задач нет, то возвращаем пустой слайс вместо nil
+    if tasks == nil {
+        tasks = []*Task{}
+    }
+
+    return tasks, nil
 }
 
 // Проверяет, что строка соответствует формату DD.MM.YYYY

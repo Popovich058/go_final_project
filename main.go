@@ -13,6 +13,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("error connection database: %v", err)
 	}
+	
+	// Закрываем соединение с БД
+	defer db.Close()
+	
 	// Запускаем сервер
 	err = server.StartingServer()
 	if err != nil {

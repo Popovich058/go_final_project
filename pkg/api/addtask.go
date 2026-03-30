@@ -63,36 +63,42 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	
 	body, err := io.ReadAll(r.Body)
     if err != nil {
+        w.WriteHeader(http.StatusBadRequest)
         writeJson(w, responseErr{Error: "error reading the request body"}, false)
 			return
     }
 
     // Десериализация JSON
     if err = json.Unmarshal(body, &task); err != nil {
+        w.WriteHeader(http.StatusBadRequest)
         writeJson(w, responseErr{Error: "error deserializing JSON"}, false)
 			return
     }
 
     // Проверка обязательного поля title
     if task.Title == "" {
-		writeJson(w, responseErr{Error: "the task title is not specified"}, false)
+		w.WriteHeader(http.StatusBadRequest)
+        writeJson(w, responseErr{Error: "the task title is not specified"}, false)
 			return
 	}
 
     // Проверка даты
     err = checkDate(&task)
 	if err != nil {
-		writeJson(w, responseErr{Error: err.Error()}, false)
+		w.WriteHeader(http.StatusBadRequest)
+        writeJson(w, responseErr{Error: err.Error()}, false)
 			return
 	}
 
     // Добавление задачи в базу данных
     id, err := db.AddTask(&task)
 	if err != nil {
-		writeJson(w, responseErr{Error: "error adding a task to the database"}, false)
+		w.WriteHeader(http.StatusInternalServerError)
+        writeJson(w, responseErr{Error: "error adding a task to the database"}, false)
 			return
 	}
 
+	w.WriteHeader(http.StatusOK)
 	response.ID = strconv.FormatInt(id, 10)
 	writeJson(w, response, true)
 }

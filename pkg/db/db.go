@@ -2,8 +2,8 @@ package db
 
 import (
 	"database/sql"
+	_ "modernc.org/sqlite"
 	"os"
-	_ "modernc.org/sqlite" 
 )
 
 // Использем глобальную переменную
@@ -46,10 +46,22 @@ func Init(dbFile string) error {
 	// Создание таблицы при необходимости
 	if install {
 		_, err = db.Exec(schema)
-	if err != nil {
-		return err
-	}
+		if err != nil {
+			db.Close()
+			db = nil
+			return err
+		}
 	}
 
-	return nil
+	return nil 
+}
+
+// Закрываем соединение с БД.
+func Close() error {
+	if db == nil {
+		return nil
+	}
+	err := db.Close()
+	db = nil
+	return err
 }
